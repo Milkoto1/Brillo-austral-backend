@@ -68,8 +68,8 @@ def enviar_correo_gmail(reporte, total_final):
             except: pass
 
     try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
+        # CAMBIO: Usamos SSL directo en el puerto 465
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(remitente, password)
         server.sendmail(remitente, remitente, msg.as_string())
         server.quit()
