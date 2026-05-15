@@ -68,14 +68,24 @@ def enviar_correo_gmail(reporte, total_final):
             except: pass
 
     try:
-        # CAMBIO: Usamos SSL directo en el puerto 465
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        # Forzamos la conexión a smtp.gmail.com
+        # Usamos el puerto 465 (SSL) que es el estándar para nubes
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15)
+        
+        # Saludamos al servidor
+        server.ehlo()
+        
+        # Iniciamos sesión
         server.login(remitente, password)
+        
+        # Enviamos
         server.sendmail(remitente, remitente, msg.as_string())
+        
         server.quit()
         return True
     except Exception as e:
-        print(f"Error SMTP: {e}")
+        # Esto nos dirá en los logs exactamente qué pasó
+        print(f"Error SMTP detallado: {type(e).__name__} - {e}")
         return False
 
 @app.post("/reporte")
