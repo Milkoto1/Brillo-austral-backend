@@ -59,13 +59,27 @@ async def procesar(reporte: ReporteServicio):
         </tr>
         """
 
+    attachments = []
     fotos_html = ""
+    
     for idx, i in enumerate(reporte.items):
-        if i.foto_base64:
+        if i.foto_base64 and "base64," in i.foto_base64:
+            # Separamos el encabezado de los datos reales de la imagen
+            content_type, b64_data = i.foto_base64.split("base64,")
+            filename = f"foto_{idx+1}.jpg"
+            
+            # Agregamos como adjunto oficial (CID)
+            attachments.append({
+                "content": b64_data,
+                "filename": filename,
+                "content_id": filename 
+            })
+            
+            # El HTML ahora llama al CID, que es el metodo estandar para ver fotos en Gmail
             fotos_html += f"""
             <div style="margin-top: 25px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
-                <p style="font-size: 12px; color: #555; margin-bottom: 8px;">FOTO #{idx+1} - {i.nombre_item.upper()}</p>
-                <img src="{i.foto_base64}" style="width: 100%; max-width: 450px; height: auto; border-radius: 8px; border: 1px solid #ccc; display: block; margin: 0 auto;" />
+                <p style="font-size: 12px; color: #555; margin-bottom: 8px; font-weight: bold;">FOTO #{idx+1} - {i.nombre_item.upper()}</p>
+                <img src="cid:{filename}" style="width: 100%; max-width: 450px; height: auto; border-radius: 8px; display: block; margin: 0 auto;" />
             </div>
             """
 
@@ -121,9 +135,10 @@ async def procesar(reporte: ReporteServicio):
             "from": "Brillo Austral <onboarding@resend.dev>",
             "to": "brilloaustralpv@gmail.com",
             "subject": f"Reporte: {reporte.cliente_nombre} ({total_final} m2)",
-            "html": html_content
+            "html": html_content,
+            "attachments": attachments
         })
         return {"status": "ok"}
     except Exception as e:
-        print(f"Error Resend: {e}")
+        print(f"Error Resend: {{e}}")
         return {"status": "error"}
