@@ -1,5 +1,5 @@
 import os
-import resend # <--- Nuevo aliado
+import resend
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional
@@ -21,6 +21,7 @@ class ItemServicio(BaseModel):
     alto: float
     doble_cara: bool
     comentario: Optional[str] = None
+    foto_base64: Optional[str] = None # Agregado para recibir la foto del celular
 
 class ReporteServicio(BaseModel):
     cliente_nombre: str
@@ -35,7 +36,7 @@ async def procesar(reporte: ReporteServicio):
     total = sum((i.ancho * i.alto * (2 if i.doble_cara else 1)) for i in reporte.items)
     total_final = round(total, 2)
 
-    # Creamos las filas de la tabla con mejor formato
+    # 1. Creamos las filas de la tabla
     filas_tabla = ""
     for idx, i in enumerate(reporte.items):
         m2 = round(i.ancho * i.alto, 2)
@@ -59,7 +60,18 @@ async def procesar(reporte: ReporteServicio):
         </tr>
         """
 
-    # Diseño profesional del HTML
+    # 2. Generamos el HTML de las fotografías
+    fotos_html = ""
+    for idx, i in enumerate(reporte.items):
+        if i.foto_base64:
+            fotos_html += f"""
+            <div style="margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 10px;">
+                <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Foto ítem #{idx+1} ({i.nombre_item})</p>
+                <img src="{i.foto_base64}" style="max-width: 100%; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" />
+            </div>
+            """
+
+    # 3. Diseño profesional del HTML Final
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
@@ -93,6 +105,9 @@ async def procesar(reporte: ReporteServicio):
                     <span style="font-size: 18px;">TOTAL SUPERFICIE: </span>
                     <span style="font-size: 24px; font-weight: bold; margin-left: 10px;">{total_final} m²</span>
                 </div>
+
+                {fotos_html}
+
             </div>
             
             <div style="background-color: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; color: #777;">
@@ -114,5 +129,3 @@ async def procesar(reporte: ReporteServicio):
     except Exception as e:
         print(f"Error Resend: {e}")
         return {"status": "error"}
-
-   
