@@ -1,173 +1,129 @@
-import React, { useState, useEffect } from 'react';
+import os
+import resend
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List, Optional
+from fastapi.middleware.cors import CORSMiddleware
 
-const optimizarImagen = (archivoBase64) => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.src = archivoBase64;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const MAX_WIDTH = 700; 
-      let width = img.width;
-      let height = img.height;
+app = FastAPI()
+resend.api_key = os.environ.get("RESEND_API_KEY")
 
-      if (width > MAX_WIDTH) {
-        height *= MAX_WIDTH / width;
-        width = MAX_WIDTH;
-      }
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
+class ItemServicio(BaseModel):
+    nombre_item: str
+    ancho: float
+    alto: float
+    doble_cara: bool
+    comentario: Optional[str] = None
+    foto_base64: Optional[str] = None
 
-      // Bajamos a 0.5 para máxima compatibilidad y ligereza
-      const resultado = canvas.toDataURL('image/jpeg', 0.5);
-      resolve(resultado);
-    };
-  });
-};
+class ReporteServicio(BaseModel):
+    cliente_nombre: str
+    direccion: str
+    email_cliente: str
+    usuario_emisor: str
+    telefono: Optional[str] = None
+    items: List[ItemServicio]
 
-function App() {
-  const [usuarioLogueado, setUsuarioLogueado] = useState('');
-  const [nombreTmp, setNombreTmp] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [direccion, setDireccion] = useState('');
-  const [email, setEmail] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [items, setItems] = useState([{ 
-    id: Date.now(), 
-    tipo: 'Ventana', 
-    nombrePersonalizado: '', 
-    ancho: '', 
-    alto: '', 
-    doble_cara: false, 
-    comentario: '', 
-    foto: null 
-  }]);
-  const [totalGeneral, setTotalGeneral] = useState('0');
-  const [enviando, setEnviando] = useState(false);
+@app.post("/reporte")
+async def procesar(reporte: ReporteServicio):
+    total = sum((i.ancho * i.alto * (2 if i.doble_cara else 1)) for i in reporte.items)
+    total_final = round(total, 2)
 
-  const actualizarItem = (id, campo, valor) => {
-    setItems(items.map(item => item.id === id ? { ...item, [campo]: valor } : item));
-  };
+    filas_tabla = ""
+    for idx, i in enumerate(reporte.items):
+        m2 = round(i.ancho * i.alto, 2)
+        total_item = m2 * 2 if i.doble_cara else m2
+        comentario_texto = f"<br><i style='color: #666; font-size: 11px;'>Nota: {i.comentario}</i>" if i.comentario else ""
+        
+        filas_tabla += f"""
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                <span style="font-size: 14px;"><b>{i.nombre_item} #{idx+1}</b></span>{comentario_texto}
+            </td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; font-size: 14px;">
+                {i.ancho} x {i.alto}m
+            </td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; font-size: 14px;">
+                {'Doble' if i.doble_cara else 'Simple'}
+            </td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; font-weight: bold; font-size: 14px;">
+                {total_item} m2
+            </td>
+        </tr>
+        """
 
-  const manejarFoto = (id, archivo) => {
-    if (!archivo) return;
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const fotoOptimizada = await optimizarImagen(reader.result);
-      actualizarItem(id, 'foto', fotoOptimizada);
-    };
-    reader.readAsDataURL(archivo);
-  };
+    fotos_html = ""
+    for idx, i in enumerate(reporte.items):
+        if i.foto_base64:
+            fotos_html += f"""
+            <div style="margin-top: 25px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
+                <p style="font-size: 12px; color: #555; margin-bottom: 8px;">FOTO #{idx+1} - {i.nombre_item.upper()}</p>
+                <img src="{i.foto_base64}" style="width: 100%; max-width: 450px; height: auto; border-radius: 8px; border: 1px solid #ccc; display: block; margin: 0 auto;" />
+            </div>
+            """
 
-  useEffect(() => {
-    let suma = 0;
-    items.forEach(i => {
-      const a = parseFloat(String(i.ancho).replace(',', '.')) || 0;
-      const h = parseFloat(String(i.alto).replace(',', '.')) || 0;
-      suma += (a * h * (i.doble_cara ? 2 : 1));
-    });
-    setTotalGeneral(suma.toFixed(2).replace('.', ','));
-  }, [items]);
+    html_content = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.5; background-color: #f9f9f9; padding: 20px;">
+        <div style="max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+            <div style="background-color: #005f8d; color: white; padding: 25px; text-align: center;">
+                <h1 style="margin: 0; font-size: 20px; text-transform: uppercase;">Reporte de Servicio</h1>
+                <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.8;">Brillo Austral PV - Puerto Varas</p>
+            </div>
+            
+            <div style="padding: 25px;">
+                <div style="margin-bottom: 15px; font-size: 14px;">
+                    <p style="margin: 4px 0;"><strong>Cliente:</strong> {reporte.cliente_nombre}</p>
+                    <p style="margin: 4px 0;"><strong>Direccion:</strong> {reporte.direccion}</p>
+                    <p style="margin: 4px 0;"><strong>Trabajador:</strong> {reporte.usuario_emisor}</p>
+                    {f'<p style="margin: 4px 0;"><strong>Telefono:</strong> {reporte.telefono}</p>' if reporte.telefono else ''}
+                </div>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                    <thead>
+                        <tr style="background-color: #f2f2f2;">
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #005f8d; font-size: 12px;">ITEM</th>
+                            <th style="padding: 10px; text-align: center; border-bottom: 2px solid #005f8d; font-size: 12px;">MEDIDAS</th>
+                            <th style="padding: 10px; text-align: center; border-bottom: 2px solid #005f8d; font-size: 12px;">CARA</th>
+                            <th style="padding: 10px; text-align: right; border-bottom: 2px solid #005f8d; font-size: 12px;">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filas_tabla}
+                    </tbody>
+                </table>
+                
+                <div style="margin-top: 20px; padding: 12px; background-color: #0f172a; color: white; text-align: right; border-radius: 8px;">
+                    <span style="font-size: 15px;">TOTAL SUPERFICIE: </span>
+                    <span style="font-size: 20px; font-weight: bold; margin-left: 8px;">{total_final} m2</span>
+                </div>
 
-  const enviarReporte = async () => {
-    if (!nombre || !direccion || !email) return alert("Faltan campos obligatorios (*)");
-    setEnviando(true);
-    const payload = {
-      cliente_nombre: nombre, direccion, email_cliente: email,
-      usuario_emisor: usuarioLogueado, telefono,
-      items: items.map(i => ({
-        nombre_item: i.tipo === 'Otro' ? i.nombrePersonalizado : i.tipo,
-        ancho: parseFloat(String(i.ancho).replace(',', '.')) || 0,
-        alto: parseFloat(String(i.alto).replace(',', '.')) || 0,
-        doble_cara: i.doble_cara,
-        comentario: i.comentario,
-        foto_base64: i.foto
-      }))
-    };
-    try {
-      const res = await fetch('https://brillo-austral-backend.onrender.com/reporte', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        alert("¡Reporte enviado exitosamente!");
-        setItems([{ id: Date.now(), tipo: 'Ventana', nombrePersonalizado: '', ancho: '', alto: '', doble_cara: false, comentario: '', foto: null }]);
-        setNombre(''); setDireccion(''); setEmail(''); setTelefono('');
-      } else { alert("Error en el servidor"); }
-    } catch { alert("Error de conexión"); }
-    finally { setEnviando(false); }
-  };
-
-  const inputS = { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ccc', marginBottom: '10px', boxSizing: 'border-box' };
-
-  if (!usuarioLogueado) {
-    return (
-      <div style={{ padding: '50px 20px', textAlign: 'center', fontFamily: 'Arial' }}>
-        <h2 style={{ color: '#005f8d' }}>Brillo Austral PV</h2>
-        <input type="text" placeholder="Tu nombre" value={nombreTmp} onChange={e => setNombreTmp(e.target.value)} style={inputS} />
-        <button onClick={() => setUsuarioLogueado(nombreTmp)} style={{ width: '100%', padding: '15px', borderRadius: '30px', border: 'none', backgroundColor: '#005f8d', color: 'white', fontWeight: 'bold' }}>Entrar</button>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: '15px', fontFamily: 'Arial', backgroundColor: '#f0f4f8', minHeight: '100vh' }}>
-      <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '15px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-        <p>Trabajador: <b>{usuarioLogueado}</b></p>
-        <input placeholder="Cliente *" value={nombre} onChange={e => setNombre(e.target.value)} style={inputS} />
-        <input placeholder="Dirección *" value={direccion} onChange={e => setDireccion(e.target.value)} style={inputS} />
-        <input placeholder="Email *" value={email} onChange={e => setEmail(e.target.value)} style={inputS} />
-        <input placeholder="Teléfono" value={telefono} onChange={e => setTelefono(e.target.value)} style={inputS} />
-      </div>
-
-      {items.map((item, index) => (
-        <div key={item.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '15px', marginBottom: '15px', borderLeft: '5px solid #005f8d', position: 'relative' }}>
-          <button onClick={() => items.length > 1 && setItems(items.filter(i => i.id !== item.id))} style={{ position: 'absolute', right: '10px', top: '10px', border: 'none', background: 'none', color: 'red' }}>X</button>
-          <p style={{ fontWeight: 'bold', color: '#005f8d' }}>ITEM #{index + 1}</p>
-          
-          <select value={item.tipo} onChange={e => actualizarItem(item.id, 'tipo', e.target.value)} style={inputS}>
-            <option value="Ventana">Ventana</option>
-            <option value="Panel">Panel</option>
-            <option value="Puerta">Puerta</option>
-            <option value="Otro">Otro (Especificar)</option>
-          </select>
-
-          {item.tipo === 'Otro' && (
-            <input placeholder="Que es? (Ej: Espejo)" value={item.nombrePersonalizado} onChange={e => actualizarItem(item.id, 'nombrePersonalizado', e.target.value)} style={inputS} />
-          )}
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input placeholder="Ancho" value={item.ancho} onChange={e => actualizarItem(item.id, 'ancho', e.target.value)} style={inputS} />
-            <input placeholder="Alto" value={item.alto} onChange={e => actualizarItem(item.id, 'alto', e.target.value)} style={inputS} />
-          </div>
-
-          <label style={{ display: 'block', marginBottom: '10px', fontSize: '14px' }}>
-            <input type="checkbox" checked={item.doble_cara} onChange={e => actualizarItem(item.id, 'doble_cara', e.target.checked)} /> Limpieza Doble Cara (x2)
-          </label>
-
-          <input placeholder="Comentario opcional..." value={item.comentario} onChange={e => actualizarItem(item.id, 'comentario', e.target.value)} style={{ ...inputS, fontSize: '12px' }} />
-
-          <label style={{ display: 'block', backgroundColor: item.foto ? '#c6f6d5' : '#e2e8f0', padding: '10px', borderRadius: '8px', textAlign: 'center', cursor: 'pointer' }}>
-            {item.foto ? 'Foto Lista' : 'Abrir Camara'}
-            <input type="file" accept="image/*" capture="environment" onChange={e => manejarFoto(item.id, e.target.files[0])} style={{ display: 'none' }} />
-          </label>
+                {fotos_html}
+            </div>
+            
+            <div style="background-color: #eeeeee; padding: 12px; text-align: center; font-size: 10px; color: #888;">
+                Generado por la aplicacion Brillo Austral PV.
+            </div>
         </div>
-      ))}
+    </body>
+    </html>
+    """
 
-      <button onClick={() => setItems([...items, { id: Date.now(), tipo: 'Ventana', nombrePersonalizado: '', ancho: '', alto: '', doble_cara: false, comentario: '', foto: null }])} style={{ width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '10px', border: '1px dashed #005f8d', color: '#005f8d', background: 'none', fontWeight: 'bold' }}>+ Agregar Item</button>
-      
-      <div style={{ backgroundColor: '#0f172a', color: 'white', padding: '20px', borderRadius: '15px', textAlign: 'center' }}>
-        <h2 style={{ margin: 0 }}>TOTAL: {totalGeneral} m2</h2>
-      </div>
-
-      <button onClick={enviarReporte} disabled={enviando} style={{ width: '100%', padding: '20px', borderRadius: '35px', border: 'none', backgroundColor: enviando ? '#ccc' : '#005f8d', color: 'white', fontWeight: 'bold', marginTop: '15px' }}>
-        {enviando ? 'Enviando...' : 'ENVIAR REPORTE'}
-      </button>
-    </div>
-  );
-}
-
-export default App;
+    try:
+        resend.Emails.send({
+            "from": "Brillo Austral <onboarding@resend.dev>",
+            "to": "brilloaustralpv@gmail.com",
+            "subject": f"Reporte: {reporte.cliente_nombre} ({total_final} m2)",
+            "html": html_content
+        })
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"Error Resend: {e}")
+        return {"status": "error"}
